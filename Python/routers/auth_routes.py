@@ -96,7 +96,6 @@ def register(
         role=role.strip() or "participant",
         is_admin=False,
         is_verified=False,
-        disabled=False
     )
 
     if hasattr(user, "sex"):
@@ -261,7 +260,7 @@ def login(
             detail="Email sau parolă incorectă."
         )
 
-    if user.disabled:
+    if user.is_disabled:
         raise HTTPException(
             status_code=403,
             detail="Acest cont a fost dezactivat."
@@ -313,15 +312,17 @@ def forgot_password(
         )
 
     reset_code = generate_code()
+    now = datetime.utcnow()
 
     db.query(PasswordResetCode).filter(
         PasswordResetCode.email == normalized_email
-    ).delete()
+    ).delete(synchronize_session=False)
 
     new_code = PasswordResetCode(
         email=normalized_email,
         code=reset_code,
-        created_at=datetime.utcnow()
+        created_at=now,
+        expires_at=now + timedelta(minutes=15)
     )
 
     db.add(new_code)
@@ -341,7 +342,6 @@ def forgot_password(
     return {
         "detail": "Codul de resetare a fost trimis pe email."
     }
-
 
 @router.post("/reset-password")
 def reset_password(

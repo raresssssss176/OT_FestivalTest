@@ -8,16 +8,22 @@ Base.metadata.create_all(bind=engine)
 
 ADMINS = [
     {
-        "name": "Admin Overthink 1",
-        "email": "admin1@overthink-jr.com",
-        "phone": "0700000001",
-        "password": "SchimbaParolaAdmin1_2026"
+        "name": "Mihnea",
+        "email": "cohalmihnea@gmail.com",
+        "phone": "0773746372",
+        "password": "2105790630.Mihnea"
     },
     {
-        "name": "Admin Overthink 2",
-        "email": "admin2@overthink-jr.com",
-        "phone": "0700000002",
-        "password": "SchimbaParolaAdmin2_2026"
+        "name": "Rares",
+        "email": "frogcrazy664@gmail.com",
+        "phone": "0773819026",
+        "password": "Microunde_portocala"
+    },
+    {
+        "name": "Matei",
+        "email": "elisei.mateiandrei@gmail.com",
+        "phone": "0742415898",
+        "password": "MateiAdmin1"
     }
 ]
 

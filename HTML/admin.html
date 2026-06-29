@@ -835,9 +835,6 @@
       <nav class="dropdown-menu" id="dropdownMenu">
         <a href="contact.html">Contact</a>
         <a href="program.html">Program</a>
-        <a href="despre.html">Despre</a>
-        <a href="regulament.html">Regulament</a>
-        <a href="noutati.html">Noutăți</a>
         <a href="cont.html">Cont</a>
         <a href="inscriere.html">Înscrie-te</a>
       </nav>
@@ -871,7 +868,7 @@
             <h1>Admin</h1>
             <p>
               Gestionare înscrieri, statusuri, feedback, conturi și exporturi pentru Overthink Film Fest.
-              Momentan datele sunt demo, iar după backend vor fi încărcate din baza de date.
+              Datele sunt încărcate din backend și actualizate în baza de date.
             </p>
           </div>
 
@@ -1097,92 +1094,27 @@
       }
     });
 
-    // TEMP ADMIN ACCESS
     const restrictedBox = document.getElementById("restrictedBox");
     const adminContent = document.getElementById("adminContent");
-    const isAdmin = localStorage.getItem("off_is_admin") === "1";
+    const submissionsBody = document.getElementById("submissionsBody");
+    const filterButtons = document.querySelectorAll(".filter-btn");
 
-    if(isAdmin){
-      restrictedBox.classList.remove("visible");
-      adminContent.classList.remove("hidden");
-    }else{
+    const token = localStorage.getItem("off_access_token");
+
+    let submissions = [];
+    let users = [];
+    let selectedId = null;
+    let currentFilter = "all";
+
+    function showRestricted(){
       restrictedBox.classList.add("visible");
       adminContent.classList.add("hidden");
     }
 
-    // DEMO DATA
-    let submissions = [
-      {
-        id: 1,
-        title: "Ultimul cadru",
-        contactName: "Andrei Popescu",
-        email: "andrei@example.com",
-        phone: "0712345678",
-        category: "Ficțiune",
-        duration: 18,
-        year: "2026",
-        status: "trimisa",
-        date: "2026-06-12",
-        link: "https://example.com/film-1",
-        presentation: "Placeholder prezentare scurtmetraj. Text demo pentru vizualizarea panoului admin.",
-        team: "Andrei Popescu - regizor; Maria Ionescu - imagine",
-        feedback: ""
-      },
-      {
-        id: 2,
-        title: "Insula",
-        contactName: "Ioana Marin",
-        email: "ioana@example.com",
-        phone: "0723456789",
-        category: "Documentar",
-        duration: 27,
-        year: "2026",
-        status: "necesita_modificari",
-        date: "2026-06-18",
-        link: "https://example.com/film-2",
-        presentation: "Documentar demo despre spații culturale și tineri.",
-        team: "Ioana Marin - regie; Vlad Rusu - montaj",
-        feedback: "Te rugăm să verifici linkul și să completezi datele echipei."
-      },
-      {
-        id: 3,
-        title: "Somn ușor",
-        contactName: "Radu Enache",
-        email: "radu@example.com",
-        phone: "0734567890",
-        category: "Experimental",
-        duration: 12,
-        year: "2025",
-        status: "acceptata",
-        date: "2026-06-22",
-        link: "https://example.com/film-3",
-        presentation: "Film experimental demo.",
-        team: "Radu Enache - regie / montaj",
-        feedback: "Înscriere acceptată pentru următoarea etapă."
-      },
-      {
-        id: 4,
-        title: "Camera 4",
-        contactName: "Elena Dima",
-        email: "elena@example.com",
-        phone: "0745678901",
-        category: "Ficțiune",
-        duration: 20,
-        year: "2026",
-        status: "in_verificare",
-        date: "2026-06-24",
-        link: "https://example.com/film-4",
-        presentation: "Scurtmetraj demo, thriller psihologic.",
-        team: "Elena Dima - regie; Alex Matei - actor",
-        feedback: ""
-      }
-    ];
-
-    let selectedId = null;
-    let currentFilter = "all";
-
-    const submissionsBody = document.getElementById("submissionsBody");
-    const filterButtons = document.querySelectorAll(".filter-btn");
+    function showAdminContent(){
+      restrictedBox.classList.remove("visible");
+      adminContent.classList.remove("hidden");
+    }
 
     function statusLabel(status){
       const labels = {
@@ -1193,7 +1125,84 @@
         respinsa: "Respinsă"
       };
 
-      return labels[status] || status;
+      return labels[status] || status || "-";
+    }
+
+    function formatDate(value){
+      if(!value){
+        return "-";
+      }
+
+      try{
+        return new Date(value).toLocaleDateString("ro-RO", {
+          year:"numeric",
+          month:"short",
+          day:"numeric"
+        });
+      }catch{
+        return value;
+      }
+    }
+
+    async function adminFetch(url, options = {}){
+      const response = await fetch(url, {
+        ...options,
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json",
+          ...(options.headers || {})
+        }
+      });
+
+      let data = {};
+
+      try{
+        data = await response.json();
+      }catch(error){
+        data = {};
+      }
+
+      if(response.status === 401 || response.status === 403){
+        showRestricted();
+      }
+
+      return { response, data };
+    }
+
+    async function verifyAdminAccess(){
+      if(!token){
+        showRestricted();
+        return false;
+      }
+
+      const { response, data } = await adminFetch("/api/account/me", {
+        method: "GET"
+      });
+
+      if(!response.ok || !data.is_admin){
+        showRestricted();
+        return false;
+      }
+
+      localStorage.setItem("off_is_admin", "1");
+      showAdminContent();
+      return true;
+    }
+
+    function renderStatsFromData(stats){
+      document.getElementById("statTotal").textContent = stats.total_submissions || 0;
+      document.getElementById("statReview").textContent = stats.by_status?.in_verificare || 0;
+      document.getElementById("statChanges").textContent = stats.by_status?.necesita_modificari || 0;
+      document.getElementById("statAccepted").textContent = stats.by_status?.acceptata || 0;
+      document.getElementById("statRejected").textContent = stats.by_status?.respinsa || 0;
+    }
+
+    function renderStatsFallback(){
+      document.getElementById("statTotal").textContent = submissions.length;
+      document.getElementById("statReview").textContent = submissions.filter(s => s.status === "in_verificare").length;
+      document.getElementById("statChanges").textContent = submissions.filter(s => s.status === "necesita_modificari").length;
+      document.getElementById("statAccepted").textContent = submissions.filter(s => s.status === "acceptata").length;
+      document.getElementById("statRejected").textContent = submissions.filter(s => s.status === "respinsa").length;
     }
 
     function getFilteredSubmissions(){
@@ -1204,12 +1213,16 @@
       return submissions.filter(item => item.status === currentFilter);
     }
 
-    function renderStats(){
-      document.getElementById("statTotal").textContent = submissions.length;
-      document.getElementById("statReview").textContent = submissions.filter(s => s.status === "in_verificare").length;
-      document.getElementById("statChanges").textContent = submissions.filter(s => s.status === "necesita_modificari").length;
-      document.getElementById("statAccepted").textContent = submissions.filter(s => s.status === "acceptata").length;
-      document.getElementById("statRejected").textContent = submissions.filter(s => s.status === "respinsa").length;
+    function getContactName(item){
+      if(item.user && item.user.name){
+        return item.user.name;
+      }
+
+      if(item.coordinator_name){
+        return item.coordinator_name;
+      }
+
+      return item.contact_email || "-";
     }
 
     function renderTable(){
@@ -1235,15 +1248,15 @@
 
         tr.innerHTML = `
           <td>#${item.id}</td>
-          <td><strong>${item.title}</strong></td>
+          <td><strong>${item.title || "-"}</strong></td>
           <td>
-            <strong>${item.contactName}</strong><br>
-            <span class="muted">${item.email}</span>
+            <strong>${getContactName(item)}</strong><br>
+            <span class="muted">${item.contact_email || item.user?.email || "-"}</span>
           </td>
-          <td>${item.category}</td>
-          <td>${item.duration} min</td>
+          <td>${item.category || "-"}</td>
+          <td>${item.duration_minutes || "-"} min</td>
           <td><span class="status-pill ${item.status}">${statusLabel(item.status)}</span></td>
-          <td>${item.date}</td>
+          <td>${formatDate(item.created_at)}</td>
           <td><button class="btn btn-small btn-secondary" type="button">Deschide</button></td>
         `;
 
@@ -1268,18 +1281,22 @@
       document.getElementById("adminActionsEmpty").style.display = "none";
       document.getElementById("adminActionsBox").style.display = "block";
 
-      document.getElementById("detailTitle").textContent = item.title;
-      document.getElementById("detailContact").textContent = item.contactName;
-      document.getElementById("detailEmail").textContent = item.email;
-      document.getElementById("detailPhone").textContent = item.phone;
-      document.getElementById("detailFilmInfo").textContent = `${item.category}, ${item.duration} minute, ${item.year}`;
-      document.getElementById("detailLink").textContent = item.link;
-      document.getElementById("detailLink").href = item.link;
-      document.getElementById("detailPresentation").textContent = item.presentation;
-      document.getElementById("detailTeam").textContent = item.team;
+      const teamText = Array.isArray(item.team_members) && item.team_members.length
+        ? item.team_members.map(member => `${member.name} - ${member.role}`).join("; ")
+        : "-";
 
-      document.getElementById("statusSelect").value = item.status;
-      document.getElementById("feedbackText").value = item.feedback || "";
+      document.getElementById("detailTitle").textContent = item.title || "-";
+      document.getElementById("detailContact").textContent = getContactName(item);
+      document.getElementById("detailEmail").textContent = item.contact_email || item.user?.email || "-";
+      document.getElementById("detailPhone").textContent = item.contact_phone || item.user?.phone || "-";
+      document.getElementById("detailFilmInfo").textContent = `${item.category || "-"}, ${item.duration_minutes || "-"} minute, ${item.production_year || "-"}`;
+      document.getElementById("detailLink").textContent = item.short_film_link || "-";
+      document.getElementById("detailLink").href = item.short_film_link || "#";
+      document.getElementById("detailPresentation").textContent = item.presentation || "-";
+      document.getElementById("detailTeam").textContent = teamText;
+
+      document.getElementById("statusSelect").value = item.status || "trimisa";
+      document.getElementById("feedbackText").value = item.admin_feedback || "";
 
       hideAdminMessage();
       renderTable();
@@ -1297,6 +1314,44 @@
       box.className = "message-box";
     }
 
+    function resetDetails(){
+      selectedId = null;
+      document.getElementById("emptyDetails").style.display = "block";
+      document.getElementById("detailsBox").style.display = "none";
+      document.getElementById("adminActionsEmpty").style.display = "block";
+      document.getElementById("adminActionsBox").style.display = "none";
+    }
+
+    async function loadAdminDashboard(){
+      const statsResult = await adminFetch("/api/admin/stats");
+      const submissionsResult = await adminFetch("/api/admin/submissions");
+      const usersResult = await adminFetch("/api/admin/users");
+
+      if(statsResult.response.ok){
+        renderStatsFromData(statsResult.data);
+      }
+
+      if(submissionsResult.response.ok){
+        submissions = submissionsResult.data.submissions || [];
+      }
+
+      if(usersResult.response.ok){
+        users = usersResult.data.users || [];
+      }
+
+      if(!statsResult.response.ok){
+        renderStatsFallback();
+      }
+
+      renderTable();
+
+      if(selectedId && submissions.some(item => item.id === selectedId)){
+        selectSubmission(selectedId);
+      }else{
+        resetDetails();
+      }
+    }
+
     filterButtons.forEach(button => {
       button.addEventListener("click", () => {
         filterButtons.forEach(btn => btn.classList.remove("active"));
@@ -1307,50 +1362,87 @@
       });
     });
 
-    document.getElementById("saveStatusBtn").addEventListener("click", () => {
+    document.getElementById("saveStatusBtn").addEventListener("click", async () => {
+      if(!selectedId){
+        return;
+      }
+
+      const status = document.getElementById("statusSelect").value;
+      const feedback = document.getElementById("feedbackText").value.trim();
+
+      const { response, data } = await adminFetch(`/api/admin/submissions/${selectedId}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          status: status,
+          admin_feedback: feedback || null,
+          can_edit: status === "necesita_modificari"
+        })
+      });
+
+      if(!response.ok){
+        showAdminMessage(data.detail || "Statusul nu a putut fi salvat.", "error");
+        return;
+      }
+
+      showAdminMessage(data.detail || "Status actualizat.", "success");
+      await loadAdminDashboard();
+      selectSubmission(selectedId);
+    });
+
+    document.getElementById("deleteSubmissionBtn").addEventListener("click", async () => {
+      if(!selectedId){
+        return;
+      }
+
+      const confirmDelete = confirm("Sigur vrei să ștergi definitiv această înscriere?");
+
+      if(!confirmDelete){
+        return;
+      }
+
+      const { response, data } = await adminFetch(`/api/admin/submissions/${selectedId}`, {
+        method: "DELETE"
+      });
+
+      if(!response.ok){
+        showAdminMessage(data.detail || "Înscrierea nu a putut fi ștearsă.", "error");
+        return;
+      }
+
+      alert(data.detail || "Înscriere ștearsă.");
+      selectedId = null;
+      await loadAdminDashboard();
+    });
+
+    document.getElementById("disableAccountBtn").addEventListener("click", async () => {
       if(!selectedId){
         return;
       }
 
       const item = submissions.find(s => s.id === selectedId);
-      item.status = document.getElementById("statusSelect").value;
-      item.feedback = document.getElementById("feedbackText").value.trim();
 
-      renderStats();
-      renderTable();
-      selectSubmission(selectedId);
-
-      showAdminMessage("Modificările au fost salvate local. După backend, acestea vor fi salvate în baza de date.", "success");
-    });
-
-    document.getElementById("deleteSubmissionBtn").addEventListener("click", () => {
-      if(!selectedId){
+      if(!item || !item.user_id){
+        showAdminMessage("Nu am găsit userul asociat înscrierii.", "error");
         return;
       }
 
-      const confirmDelete = confirm("Sigur vrei să ștergi această înscriere demo?");
-      if(!confirmDelete){
+      const confirmDisable = confirm("Sigur vrei să dezactivezi contul asociat acestei înscrieri?");
+
+      if(!confirmDisable){
         return;
       }
 
-      submissions = submissions.filter(s => s.id !== selectedId);
-      selectedId = null;
+      const { response, data } = await adminFetch(`/api/admin/users/${item.user_id}/disable`, {
+        method: "PATCH"
+      });
 
-      document.getElementById("emptyDetails").style.display = "block";
-      document.getElementById("detailsBox").style.display = "none";
-      document.getElementById("adminActionsEmpty").style.display = "block";
-      document.getElementById("adminActionsBox").style.display = "none";
-
-      renderStats();
-      renderTable();
-    });
-
-    document.getElementById("disableAccountBtn").addEventListener("click", () => {
-      if(!selectedId){
+      if(!response.ok){
+        showAdminMessage(data.detail || "Contul nu a putut fi dezactivat.", "error");
         return;
       }
 
-      showAdminMessage("Contul ar fi dezactivat aici. Funcția va fi conectată la backend.", "success");
+      showAdminMessage(data.detail || "Cont dezactivat.", "success");
+      await loadAdminDashboard();
     });
 
     document.getElementById("exportCsvBtn").addEventListener("click", () => {
@@ -1358,19 +1450,19 @@
       const rows = submissions.map(item => [
         item.id,
         item.title,
-        item.contactName,
-        item.email,
-        item.phone,
+        getContactName(item),
+        item.contact_email || item.user?.email || "",
+        item.contact_phone || item.user?.phone || "",
         item.category,
-        item.duration,
-        item.year,
+        item.duration_minutes,
+        item.production_year,
         statusLabel(item.status),
-        item.date,
-        item.link
+        formatDate(item.created_at),
+        item.short_film_link
       ]);
 
       const csvContent = [header, ...rows]
-        .map(row => row.map(value => `"${String(value).replaceAll('"', '""')}"`).join(","))
+        .map(row => row.map(value => `"${String(value ?? "").replaceAll('"', '""')}"`).join(","))
         .join("\n");
 
       const blob = new Blob([csvContent], { type:"text/csv;charset=utf-8;" });
@@ -1378,14 +1470,23 @@
 
       const link = document.createElement("a");
       link.href = url;
-      link.download = "overthink-film-fest-inscrieri-demo.csv";
+      link.download = "overthink-film-fest-inscrieri.csv";
       link.click();
 
       URL.revokeObjectURL(url);
     });
 
-    renderStats();
-    renderTable();
+    async function initAdminPage(){
+      const isAllowed = await verifyAdminAccess();
+
+      if(!isAllowed){
+        return;
+      }
+
+      await loadAdminDashboard();
+    }
+
+    initAdminPage();
   </script>
 
 </body>

@@ -19,12 +19,12 @@ def send_verification_email(to_email: str, code: str) -> bool:
         "to": [to_email],
         "subject": f"Cod verificare cont - {FESTIVAL_NAME}",
         "html": f"""
-            <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111;">
-                <h2>Codul tău de verificare</h2>
-                <p>Codul pentru verificarea contului tău Overthink Film Fest este:</p>
-                <h1 style="letter-spacing: 4px; font-size: 32px;">{code}</h1>
-                <p>Dacă nu ai solicitat acest cod, poți ignora acest email.</p>
-            </div>
+        <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+            <h2>Codul tău de verificare</h2>
+            <p>Codul pentru verificarea contului tău Overthink Film Fest este:</p>
+            <h1 style="letter-spacing: 4px;">{code}</h1>
+            <p>Dacă nu ai solicitat acest cod, poți ignora acest email.</p>
+        </div>
         """
     }
 
@@ -65,12 +65,12 @@ def send_password_reset_email(to_email: str, code: str) -> bool:
         "to": [to_email],
         "subject": f"Resetare parolă - {FESTIVAL_NAME}",
         "html": f"""
-            <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111;">
-                <h2>Resetare parolă</h2>
-                <p>Codul pentru resetarea parolei contului tău Overthink Film Fest este:</p>
-                <h1 style="letter-spacing: 4px; font-size: 32px;">{code}</h1>
-                <p>Dacă nu ai solicitat resetarea parolei, poți ignora acest email.</p>
-            </div>
+        <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+            <h2>Resetare parolă</h2>
+            <p>Codul pentru resetarea parolei contului tău Overthink Film Fest este:</p>
+            <h1 style="letter-spacing: 4px;">{code}</h1>
+            <p>Dacă nu ai solicitat resetarea parolei, poți ignora acest email.</p>
+        </div>
         """
     }
 

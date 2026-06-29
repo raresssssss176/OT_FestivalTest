@@ -1016,7 +1016,7 @@
             <div class="form-block active" id="existingAccountBlock">
               <div class="block-title">Cont existent</div>
               <p class="block-note">
-                Introdu emailul contului tău verificat. După conectarea backendului, emailul va fi preluat automat din contul autentificat.
+                Pentru înscriere trebuie să fii autentificat. Emailul este preluat automat din contul tău.
               </p>
 
               <div class="form-grid">
@@ -1069,7 +1069,7 @@
                 <div class="field">
                   <label for="emailCode">Cod verificare email <span class="required">*</span></label>
                   <input id="emailCode" name="email_code" type="text" inputmode="numeric" maxlength="6" placeholder="Cod de 6 cifre" autocomplete="off">
-                  <p class="hint">După conectarea backendului, codul va fi trimis automat pe email.</p>
+                  <p class="hint">Contul se creează și se verifică din pagina Cont.</p>
                 </div>
 
                 <div class="field full">
@@ -1360,44 +1360,102 @@
           entry.target.classList.add("visible");
         }
       });
-    }, {
-      threshold:0.15
-    });
+    }, { threshold:0.15 });
 
     revealElements.forEach(el => revealObserver.observe(el));
 
-    // ACCOUNT MODE
-    const accountModeInputs = document.querySelectorAll('input[name="account_mode"]');
-    const existingAccountBlock = document.getElementById("existingAccountBlock");
-    const newAccountBlock = document.getElementById("newAccountBlock");
+    // BACKEND CONFIG
+    const token = localStorage.getItem("off_access_token");
+    const storedEmail = localStorage.getItem("off_user_email") || "";
 
-    function updateAccountMode(){
-      const selectedMode = document.querySelector('input[name="account_mode"]:checked').value;
-
-      if(selectedMode === "existing"){
-        existingAccountBlock.classList.add("active");
-        newAccountBlock.classList.remove("active");
-      }else{
-        existingAccountBlock.classList.remove("active");
-        newAccountBlock.classList.add("active");
-      }
-    }
-
-    accountModeInputs.forEach(input => {
-      input.addEventListener("change", updateAccountMode);
-    });
-
-    updateAccountMode();
-
-    // STATUS
     const statusBox = document.getElementById("statusBox");
     const form = document.getElementById("submissionForm");
-    const sendCodeBtn = document.getElementById("sendCodeBtn");
     const submitBtn = document.getElementById("submitBtn");
+    const accountSwitch = document.querySelector(".account-switch");
+    const existingAccountBlock = document.getElementById("existingAccountBlock");
+    const newAccountBlock = document.getElementById("newAccountBlock");
+    const sendCodeBtn = document.getElementById("sendCodeBtn");
+
+    let existingSubmission = null;
+    let editMode = false;
 
     function showStatus(message, type){
       statusBox.textContent = message;
       statusBox.className = "status " + type;
+    }
+
+    function requireLogin(){
+      if(!token){
+        showStatus("Trebuie să fii autentificat pentru a trimite o înscriere. Vei fi redirecționat către pagina de autentificare.", "error");
+        submitBtn.disabled = true;
+
+        setTimeout(() => {
+          window.location.href = "auth.html";
+        }, 1800);
+
+        return false;
+      }
+
+      return true;
+    }
+
+    function hideAccountBlocksForLoggedUser(){
+      if(accountSwitch){
+        accountSwitch.style.display = "none";
+      }
+
+      if(existingAccountBlock){
+        existingAccountBlock.classList.remove("active");
+        existingAccountBlock.style.display = "none";
+      }
+
+      if(newAccountBlock){
+        newAccountBlock.classList.remove("active");
+        newAccountBlock.style.display = "none";
+      }
+
+      const contactEmailInput = document.getElementById("contactEmail");
+      const existingEmailInput = document.getElementById("existingEmail");
+
+      if(contactEmailInput && storedEmail && !contactEmailInput.value){
+        contactEmailInput.value = storedEmail;
+      }
+
+      if(existingEmailInput && storedEmail && !existingEmailInput.value){
+        existingEmailInput.value = storedEmail;
+      }
+    }
+
+    async function apiFetch(url, options = {}){
+      const headers = {
+        ...(options.headers || {}),
+        "Authorization": `Bearer ${token}`
+      };
+
+      if(!(options.body instanceof FormData) && options.body){
+        headers["Content-Type"] = "application/json";
+      }
+
+      const response = await fetch(url, {
+        ...options,
+        headers
+      });
+
+      let data = {};
+
+      try{
+        data = await response.json();
+      }catch(error){
+        data = {};
+      }
+
+      if(response.status === 401 || response.status === 403){
+        if(data.detail){
+          showStatus(data.detail, "error");
+        }
+      }
+
+      return { response, data };
     }
 
     function isValidUrl(value){
@@ -1493,26 +1551,133 @@
     function collectMaterialLinks(){
       return Array.from(document.querySelectorAll(".material-link"))
         .map(input => input.value.trim())
-        .filter(Boolean);
+        .filter(Boolean)
+        .map(url => ({ url }));
     }
 
-    // TEMPORARY EMAIL CODE BUTTON
-    sendCodeBtn.addEventListener("click", () => {
-      const email = document.getElementById("accountEmail").value.trim();
+    function setInputValue(id, value){
+      const input = document.getElementById(id);
 
-      if(!email || !document.getElementById("accountEmail").checkValidity()){
-        showStatus("Introdu mai întâi o adresă de email validă pentru cont.", "error");
+      if(input){
+        input.value = value || "";
+      }
+    }
+
+    function setCheckboxValue(id, value){
+      const input = document.getElementById(id);
+
+      if(input){
+        input.checked = Boolean(value);
+      }
+    }
+
+    function fillTeamMembers(members){
+      const body = document.getElementById("teamMembersBody");
+      body.innerHTML = "";
+
+      const cleanMembers = Array.isArray(members) && members.length ? members : [{ name:"", role:"" }];
+
+      cleanMembers.forEach(member => {
+        const row = document.createElement("tr");
+
+        row.className = "team-row";
+        row.innerHTML = `
+          <td class="team-number"></td>
+          <td><input type="text" class="team-name" placeholder="Nume" autocomplete="off" required></td>
+          <td><input type="text" class="team-role" placeholder="Rol" autocomplete="off" required></td>
+          <td><button class="icon-btn" type="button" aria-label="Șterge membru" onclick="removeTeamMember(this)">×</button></td>
+        `;
+
+        row.querySelector(".team-name").value = member.name || "";
+        row.querySelector(".team-role").value = member.role || "";
+
+        body.appendChild(row);
+      });
+
+      renumberTeamMembers();
+    }
+
+    function fillMaterialLinks(links){
+      const list = document.getElementById("materialLinksList");
+      list.innerHTML = "";
+
+      const cleanLinks = Array.isArray(links) && links.length ? links : [{ url:"" }];
+
+      cleanLinks.forEach(link => {
+        const row = document.createElement("div");
+
+        row.className = "link-row";
+        row.innerHTML = `
+          <div class="link-number"></div>
+          <input type="url" class="material-link" placeholder="https://..." autocomplete="off">
+          <button class="icon-btn" type="button" aria-label="Șterge link" onclick="removeMaterialLink(this)">×</button>
+        `;
+
+        row.querySelector(".material-link").value = typeof link === "string" ? link : (link.url || "");
+
+        list.appendChild(row);
+      });
+
+      renumberMaterialLinks();
+    }
+
+    function fillFormWithSubmission(submission){
+      setInputValue("title", submission.title);
+      setInputValue("category", submission.category);
+      setInputValue("productionYear", submission.production_year);
+      setInputValue("duration", submission.duration_minutes);
+      setInputValue("city", submission.city);
+      setInputValue("institution", submission.institution);
+      setInputValue("presentation", submission.presentation);
+      setInputValue("shortFilmLink", submission.short_film_link);
+      setInputValue("contactPhone", submission.contact_phone);
+      setInputValue("contactEmail", submission.contact_email);
+      setInputValue("coordinatorName", submission.coordinator_name);
+      setInputValue("coordinatorEmail", submission.coordinator_email);
+      setInputValue("otherDetails", submission.other_details);
+
+      setCheckboxValue("acceptRules", true);
+      setCheckboxValue("acceptGdpr", true);
+      setCheckboxValue("acceptCookies", true);
+      setCheckboxValue("marketingConsent", submission.marketing_consent);
+
+      fillTeamMembers(submission.team_members);
+      fillMaterialLinks(submission.material_links);
+    }
+
+    async function loadExistingSubmissionForEdit(){
+      if(!token){
         return;
       }
 
-      showStatus("Funcția de trimitere cod va fi conectată după finalizarea backendului. Structura formularului este pregătită.", "info");
-    });
+      try{
+        const { response, data } = await apiFetch("/api/submissions/my", {
+          method: "GET"
+        });
 
-    // FORM VALIDATION - FRONTEND TEMPORARY
-    form.addEventListener("submit", async (event) => {
-      event.preventDefault();
+        if(!response.ok){
+          return;
+        }
 
-      const selectedMode = document.querySelector('input[name="account_mode"]:checked').value;
+        if(data.has_submission && data.submission){
+          existingSubmission = data.submission;
+
+          if(existingSubmission.can_edit || existingSubmission.status === "necesita_modificari"){
+            editMode = true;
+            submitBtn.textContent = "Retrimite înscrierea modificată";
+            fillFormWithSubmission(existingSubmission);
+            showStatus("Ai o înscriere care poate fi modificată. Datele au fost încărcate automat.", "info");
+          }else{
+            submitBtn.disabled = true;
+            showStatus("Ai deja o înscriere trimisă. O poți modifica doar dacă adminul solicită modificări.", "info");
+          }
+        }
+      }catch(error){
+        console.error(error);
+      }
+    }
+
+    function validateForm(){
       const shortFilmLink = document.getElementById("shortFilmLink").value.trim();
       const materialLinks = collectMaterialLinks();
       const teamMembers = collectTeamMembers();
@@ -1522,145 +1687,161 @@
 
       if(!document.getElementById("title").value.trim()){
         showStatus("Completează titlul scurtmetrajului.", "error");
-        return;
+        return null;
       }
 
       if(!document.getElementById("category").value){
         showStatus("Alege categoria filmului.", "error");
-        return;
+        return null;
       }
 
       if(!document.getElementById("productionYear").value){
         showStatus("Alege anul de producție.", "error");
-        return;
+        return null;
       }
 
       if(!duration || duration <= 0){
         showStatus("Completează durata filmului în minute.", "error");
-        return;
+        return null;
       }
 
       if(!document.getElementById("presentation").value.trim()){
         showStatus("Completează prezentarea scurtmetrajului.", "error");
-        return;
+        return null;
       }
 
       if(!isValidUrl(shortFilmLink)){
         showStatus("Linkul scurtmetrajului nu este valid. Trebuie să înceapă cu http:// sau https://.", "error");
-        return;
+        return null;
       }
 
       if(teamMembers.length === 0){
         showStatus("Adaugă cel puțin un membru în echipă.", "error");
-        return;
+        return null;
       }
 
       for(let i = 0; i < teamMembers.length; i++){
         if(!teamMembers[i].name){
           showStatus(`Completează numele membrului #${i + 1}.`, "error");
-          return;
+          return null;
         }
 
         if(!teamMembers[i].role){
           showStatus(`Completează rolul membrului #${i + 1}.`, "error");
-          return;
+          return null;
         }
       }
 
       for(let i = 0; i < materialLinks.length; i++){
-        if(!isValidUrl(materialLinks[i])){
+        if(!isValidUrl(materialLinks[i].url)){
           showStatus(`Linkul material #${i + 1} nu este valid.`, "error");
-          return;
+          return null;
         }
       }
 
       if(!isValidRomanianPhone(contactPhone)){
         showStatus("Numărul de telefon de contact trebuie să înceapă cu 07 și să aibă fix 10 cifre.", "error");
-        return;
+        return null;
       }
 
       if(!contactEmail || !document.getElementById("contactEmail").checkValidity()){
         showStatus("Completează un email de contact valid.", "error");
-        return;
-      }
-
-      if(selectedMode === "existing"){
-        const existingEmail = document.getElementById("existingEmail").value.trim();
-        const existingPassword = document.getElementById("existingPassword").value.trim();
-
-        if(!existingEmail || !document.getElementById("existingEmail").checkValidity()){
-          showStatus("Completează emailul contului existent.", "error");
-          return;
-        }
-
-        if(!existingPassword){
-          showStatus("Completează parola contului existent.", "error");
-          return;
-        }
-      }
-
-      if(selectedMode === "new"){
-        const accountName = document.getElementById("accountName").value.trim();
-        const accountPhone = document.getElementById("accountPhone").value.trim();
-        const accountEmail = document.getElementById("accountEmail").value.trim();
-        const accountPassword = document.getElementById("accountPassword").value;
-        const accountConfirmPassword = document.getElementById("accountConfirmPassword").value;
-        const emailCode = document.getElementById("emailCode").value.trim();
-
-        if(!accountName){
-          showStatus("Completează numele pentru crearea contului.", "error");
-          return;
-        }
-
-        if(!isValidRomanianPhone(accountPhone)){
-          showStatus("Telefonul contului trebuie să înceapă cu 07 și să aibă fix 10 cifre.", "error");
-          return;
-        }
-
-        if(!accountEmail || !document.getElementById("accountEmail").checkValidity()){
-          showStatus("Completează un email valid pentru cont.", "error");
-          return;
-        }
-
-        if(accountPassword.length < 6){
-          showStatus("Parola trebuie să aibă cel puțin 6 caractere.", "error");
-          return;
-        }
-
-        if(accountPassword !== accountConfirmPassword){
-          showStatus("Parolele pentru cont nu coincid.", "error");
-          return;
-        }
-
-        if(!emailCode){
-          showStatus("Completează codul de verificare primit pe email.", "error");
-          return;
-        }
+        return null;
       }
 
       if(!document.getElementById("acceptRules").checked){
         showStatus("Trebuie să accepți regulamentul festivalului.", "error");
-        return;
+        return null;
       }
 
       if(!document.getElementById("acceptGdpr").checked){
         showStatus("Trebuie să accepți politica GDPR.", "error");
-        return;
+        return null;
       }
 
       if(!document.getElementById("acceptCookies").checked){
         showStatus("Trebuie să accepți politica de cookies.", "error");
+        return null;
+      }
+
+      return {
+        title: document.getElementById("title").value.trim(),
+        category: document.getElementById("category").value.trim(),
+        production_year: document.getElementById("productionYear").value.trim(),
+        duration_minutes: duration,
+        city: document.getElementById("city").value.trim() || null,
+        institution: document.getElementById("institution").value.trim() || null,
+        presentation: document.getElementById("presentation").value.trim(),
+        short_film_link: shortFilmLink,
+        contact_phone: contactPhone,
+        contact_email: contactEmail,
+        coordinator_name: document.getElementById("coordinatorName").value.trim() || null,
+        coordinator_email: document.getElementById("coordinatorEmail").value.trim() || null,
+        other_details: document.getElementById("otherDetails").value.trim() || null,
+        team_members: teamMembers,
+        material_links: materialLinks,
+        accept_rules: document.getElementById("acceptRules").checked,
+        accept_gdpr: document.getElementById("acceptGdpr").checked,
+        accept_cookies: document.getElementById("acceptCookies").checked,
+        marketing_consent: document.getElementById("marketingConsent").checked
+      };
+    }
+
+    if(sendCodeBtn){
+      sendCodeBtn.addEventListener("click", () => {
+        showStatus("Conturile se creează din pagina Cont. Pentru înscriere trebuie să fii autentificat.", "info");
+      });
+    }
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      if(!requireLogin()){
         return;
       }
 
-      let successMessage = "Structura formularului este validă. După conectarea backendului, înscrierea va fi trimisă și salvată în cont.";
+      const payload = validateForm();
 
-      if(duration > 25){
-        successMessage = "Formular valid. Filmul depășește 25 de minute, dar poate fi trimis; includerea în concurs va fi decisă de admin după verificare.";
+      if(!payload){
+        return;
       }
 
-      showStatus(successMessage, "success");
+      submitBtn.disabled = true;
+      submitBtn.textContent = editMode ? "Se retrimite..." : "Se trimite...";
+
+      try{
+        const endpoint = editMode ? "/api/submissions/my" : "/api/submissions";
+        const method = editMode ? "PUT" : "POST";
+
+        const { response, data } = await apiFetch(endpoint, {
+          method,
+          body: JSON.stringify(payload)
+        });
+
+        if(!response.ok){
+          showStatus(data.detail || "Înscrierea nu a putut fi salvată.", "error");
+          submitBtn.disabled = false;
+          submitBtn.textContent = editMode ? "Retrimite înscrierea modificată" : "Trimite înscrierea";
+          return;
+        }
+
+        showStatus(data.detail || "Înscriere salvată cu succes.", "success");
+
+        setTimeout(() => {
+          window.location.href = "cont.html";
+        }, 1300);
+
+      }catch(error){
+        console.error(error);
+        showStatus("Eroare de conexiune la server.", "error");
+        submitBtn.disabled = false;
+        submitBtn.textContent = editMode ? "Retrimite înscrierea modificată" : "Trimite înscrierea";
+      }
     });
+
+    hideAccountBlocksForLoggedUser();
+    requireLogin();
+    loadExistingSubmissionForEdit();
   </script>
 
 </body>

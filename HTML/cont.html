@@ -890,7 +890,7 @@
               <h2>Date scurtmetraj</h2>
 
               <p class="panel-note" id="submissionNote">
-                Momentan nu există date de înscriere afișate. După conectarea backendului, această zonă va fi completată automat.
+                Momentan nu există date de înscriere afișate.
               </p>
 
               <div class="empty-state" id="emptySubmission">
@@ -1011,14 +1011,61 @@
       }
     });
 
-    // TEMPORARY ACCOUNT LOGIC
     const loginRequired = document.getElementById("loginRequired");
     const accountContent = document.getElementById("accountContent");
     const logoutBtn = document.getElementById("logoutBtn");
 
-    const userEmail = localStorage.getItem("off_user_email");
-    const userId = localStorage.getItem("off_user_id");
-    const isAdmin = localStorage.getItem("off_is_admin") === "1";
+    const token = localStorage.getItem("off_access_token");
+
+    function showLoggedOutState(){
+      loginRequired.classList.add("visible");
+      accountContent.classList.add("hidden");
+    }
+
+    function showLoggedInState(){
+      loginRequired.classList.remove("visible");
+      accountContent.classList.remove("hidden");
+    }
+
+    function clearAuthStorage(){
+      localStorage.removeItem("off_access_token");
+      localStorage.removeItem("off_user_email");
+      localStorage.removeItem("off_user_id");
+      localStorage.removeItem("off_is_admin");
+    }
+
+    function logout(){
+      clearAuthStorage();
+      window.location.href = "auth.html";
+    }
+
+    logoutBtn.addEventListener("click", logout);
+
+    async function accountFetch(url, options = {}){
+      const response = await fetch(url, {
+        ...options,
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          ...(options.headers || {})
+        }
+      });
+
+      let data = {};
+
+      try{
+        data = await response.json();
+      }catch(error){
+        data = {};
+      }
+
+      if(response.status === 401 || response.status === 403){
+        clearAuthStorage();
+        showLoggedOutState();
+        return { response, data };
+      }
+
+      return { response, data };
+    }
 
     function formatNameFromEmail(email){
       if(!email) return "Utilizator";
@@ -1033,63 +1080,78 @@
         .join(" ");
     }
 
-    function showLoggedOutState(){
-      loginRequired.classList.add("visible");
-      accountContent.classList.add("hidden");
-    }
+    function formatDate(value){
+      if(!value){
+        return "-";
+      }
 
-    function showLoggedInState(){
-      loginRequired.classList.remove("visible");
-      accountContent.classList.remove("hidden");
-
-      document.getElementById("profileName").textContent = formatNameFromEmail(userEmail);
-      document.getElementById("profileEmail").textContent = userEmail || "-";
-      document.getElementById("profileId").textContent = userId || "temporar";
-      document.getElementById("profileEmailRow").textContent = userEmail || "-";
-
-      if(isAdmin){
-        document.getElementById("adminBadge").style.display = "inline-flex";
-        document.getElementById("roleBadge").textContent = "Participant / Admin";
-        document.getElementById("adminPanelLink").classList.add("visible");
+      try{
+        return new Date(value).toLocaleDateString("ro-RO", {
+          year:"numeric",
+          month:"long",
+          day:"numeric"
+        });
+      }catch{
+        return value;
       }
     }
 
-    function logout(){
-      localStorage.removeItem("off_user_email");
-      localStorage.removeItem("off_user_id");
-      localStorage.removeItem("off_is_admin");
+    function statusLabel(status){
+      const labels = {
+        trimisa: "Trimisă",
+        in_verificare: "În verificare",
+        necesita_modificari: "Necesită modificări",
+        acceptata: "Acceptată",
+        respinsa: "Respinsă"
+      };
 
-      window.location.href = "auth.html";
+      return labels[status] || status || "Neînscris";
     }
 
-    logoutBtn.addEventListener("click", logout);
+    function setProfile(user){
+      const name = user.name || formatNameFromEmail(user.email);
 
-    if(userEmail){
-      showLoggedInState();
-    }else{
-      showLoggedOutState();
+      document.getElementById("profileName").textContent = name;
+      document.getElementById("profileEmail").textContent = user.email || "-";
+      document.getElementById("profileId").textContent = user.id || "-";
+      document.getElementById("profileEmailRow").textContent = user.email || "-";
+
+      localStorage.setItem("off_user_email", user.email || "");
+      localStorage.setItem("off_user_id", user.id || "");
+      localStorage.setItem("off_is_admin", user.is_admin ? "1" : "0");
+
+      if(user.is_admin){
+        document.getElementById("adminBadge").style.display = "inline-flex";
+        document.getElementById("roleBadge").textContent = "Participant / Admin";
+        document.getElementById("adminPanelLink").classList.add("visible");
+      }else{
+        document.getElementById("adminBadge").style.display = "none";
+        document.getElementById("roleBadge").textContent = user.role || "Participant";
+        document.getElementById("adminPanelLink").classList.remove("visible");
+      }
     }
 
-    /*
-      FUNCȚII PREGĂTITE PENTRU BACKENDUL NOU
-      După refacerea backendului, aici vom apela:
-      - GET /api/account/me
-      - GET /api/submissions/my
-    */
-
-    function setSubmissionStatus(status){
+    function setSubmissionStatus(status, canEdit = false){
       const statusTitle = document.getElementById("statusTitle");
       const statusDescription = document.getElementById("statusDescription");
       const statusPill = document.getElementById("statusPill");
       const statusIcon = document.getElementById("statusIcon");
       const statusActions = document.getElementById("statusActions");
 
-      statusPill.className = "status-pill " + status;
+      statusPill.className = "status-pill " + (status || "neinscris");
+
+      if(!status){
+        statusTitle.textContent = "Nu există o înscriere trimisă";
+        statusDescription.textContent = "După trimiterea formularului de înscriere, statusul scurtmetrajului va apărea aici.";
+        statusPill.textContent = "Neînscris";
+        statusIcon.textContent = "○";
+        statusActions.innerHTML = '<a href="inscriere.html" class="btn btn-primary">Trimite înscriere</a>';
+        return;
+      }
 
       if(status === "trimisa"){
         statusTitle.textContent = "Înscriere trimisă";
         statusDescription.textContent = "Înscrierea a fost trimisă și urmează să fie verificată de echipa festivalului.";
-        statusPill.textContent = "Trimisă";
         statusIcon.textContent = "✓";
         statusActions.innerHTML = "";
       }
@@ -1097,7 +1159,6 @@
       if(status === "in_verificare"){
         statusTitle.textContent = "Înscriere în verificare";
         statusDescription.textContent = "Echipa festivalului verifică datele și materialele trimise.";
-        statusPill.textContent = "În verificare";
         statusIcon.textContent = "…";
         statusActions.innerHTML = "";
       }
@@ -1105,15 +1166,15 @@
       if(status === "necesita_modificari"){
         statusTitle.textContent = "Înscrierea necesită modificări";
         statusDescription.textContent = "Echipa festivalului a cerut modificări sau completări pentru înscriere.";
-        statusPill.textContent = "Necesită modificări";
         statusIcon.textContent = "!";
-        statusActions.innerHTML = '<a href="inscriere.html" class="btn btn-primary">Modifică înscrierea</a>';
+        statusActions.innerHTML = canEdit
+          ? '<a href="inscriere.html?edit=1" class="btn btn-primary">Modifică înscrierea</a>'
+          : "";
       }
 
       if(status === "acceptata"){
         statusTitle.textContent = "Înscriere acceptată";
         statusDescription.textContent = "Scurtmetrajul a fost acceptat pentru următoarea etapă.";
-        statusPill.textContent = "Acceptată";
         statusIcon.textContent = "★";
         statusActions.innerHTML = "";
       }
@@ -1121,44 +1182,97 @@
       if(status === "respinsa"){
         statusTitle.textContent = "Înscriere respinsă";
         statusDescription.textContent = "Scurtmetrajul nu a fost acceptat în această ediție.";
-        statusPill.textContent = "Respinsă";
         statusIcon.textContent = "×";
         statusActions.innerHTML = "";
       }
+
+      statusPill.textContent = statusLabel(status);
     }
 
-    function fillSubmissionDetails(data){
+    function setNoSubmission(){
+      setSubmissionStatus(null, false);
+
+      document.getElementById("emptySubmission").classList.remove("hidden");
+      document.getElementById("submissionDetails").classList.add("hidden");
+      document.getElementById("submissionNote").textContent = "Momentan nu există date de înscriere afișate.";
+      document.getElementById("feedbackBox").textContent = "Nu există feedback pentru moment.";
+    }
+
+    function fillSubmissionDetails(submission){
       document.getElementById("emptySubmission").classList.add("hidden");
       document.getElementById("submissionDetails").classList.remove("hidden");
       document.getElementById("submissionNote").textContent = "Datele de mai jos reprezintă înscrierea transmisă către festival.";
 
-      document.getElementById("filmTitle").textContent = data.title || "-";
-      document.getElementById("filmCategory").textContent = data.category || "-";
-      document.getElementById("filmDuration").textContent = data.duration ? data.duration + " minute" : "-";
-      document.getElementById("filmYear").textContent = data.year || "-";
-      document.getElementById("filmLink").textContent = data.link || "-";
-      document.getElementById("filmNotes").textContent = data.notes || "-";
+      document.getElementById("filmTitle").textContent = submission.title || "-";
+      document.getElementById("filmCategory").textContent = submission.category || "-";
+      document.getElementById("filmDuration").textContent = submission.duration_minutes ? `${submission.duration_minutes} minute` : "-";
+      document.getElementById("filmYear").textContent = submission.production_year || "-";
+      document.getElementById("filmLink").innerHTML = submission.short_film_link
+        ? `<a href="${submission.short_film_link}" target="_blank" rel="noopener noreferrer">${submission.short_film_link}</a>`
+        : "-";
+
+      const teamText = Array.isArray(submission.team_members) && submission.team_members.length
+        ? submission.team_members.map(member => `${member.name} - ${member.role}`).join("; ")
+        : "-";
+
+      const materialText = Array.isArray(submission.material_links) && submission.material_links.length
+        ? submission.material_links.map(link => link.url).join("\n")
+        : "-";
+
+      const notes = [
+        submission.other_details ? `Alte detalii: ${submission.other_details}` : "",
+        submission.city ? `Oraș: ${submission.city}` : "",
+        submission.institution ? `Instituție: ${submission.institution}` : "",
+        `Echipă: ${teamText}`,
+        materialText !== "-" ? `Materiale: ${materialText}` : ""
+      ].filter(Boolean).join("\n");
+
+      document.getElementById("filmNotes").textContent = notes || "-";
+      document.getElementById("feedbackBox").textContent = submission.admin_feedback || "Nu există feedback pentru moment.";
     }
 
-    function setAdminFeedback(text){
-      document.getElementById("feedbackBox").textContent = text || "Nu există feedback pentru moment.";
+    async function loadAccountPage(){
+      if(!token){
+        showLoggedOutState();
+        return;
+      }
+
+      showLoggedInState();
+
+      try{
+        const meResult = await accountFetch("/api/account/me");
+
+        if(!meResult.response.ok){
+          showLoggedOutState();
+          return;
+        }
+
+        setProfile(meResult.data);
+
+        const submissionResult = await accountFetch("/api/submissions/my");
+
+        if(!submissionResult.response.ok){
+          setNoSubmission();
+          return;
+        }
+
+        if(!submissionResult.data.has_submission){
+          setNoSubmission();
+          return;
+        }
+
+        const submission = submissionResult.data.submission;
+
+        setSubmissionStatus(submission.status, submission.can_edit);
+        fillSubmissionDetails(submission);
+
+      }catch(error){
+        console.error(error);
+        setNoSubmission();
+      }
     }
 
-    /*
-      Exemplu de test manual, dacă vrei să vezi cum arată pagina cu înscriere:
-      decomentează blocul de mai jos.
-
-      setSubmissionStatus("necesita_modificari");
-      fillSubmissionDetails({
-        title: "Titlu scurtmetraj",
-        category: "Ficțiune",
-        duration: 27,
-        year: "2026",
-        link: "https://example.com",
-        notes: "Film peste 25 minute, analizat separat."
-      });
-      setAdminFeedback("Te rugăm să verifici linkul filmului și să completezi rolurile membrilor echipei.");
-    */
+    loadAccountPage();
   </script>
 
 </body>
